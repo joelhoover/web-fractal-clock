@@ -1,0 +1,125 @@
+<head>
+  <script type="text/javascript">
+    const maxDepth = 7;
+    const minOpacity = 0.1;
+    const maxOpacity = 0.5;
+    const colorFloor = 190;
+
+    window.onload = () => {
+      const keyframes = {};
+      let styles = '';
+      let domElements = '';
+
+      const rndColor = () => colorFloor + Math.floor(Math.random()*(255-colorFloor));
+
+      const getRotation = (type, sign = '+') => ({
+        'h': `rotate(${sign}360deg)`,
+        'm': `rotate(${sign}${60/12*360}deg)`,
+        's': `rotate(${sign}${60*60/12*360}deg)`,
+      }[type]);
+
+      const getSize = (type) => ({
+        'h': { height: '10vmin', width: '2px' },
+        'm': { height: '20vmin', width: '1px' },
+        's': { height: '20vmin', width: '1px' },
+      }[type]);
+
+      const getTranslation = (type) => `translateY(${getSize(type).height})`;
+
+      const createHand = (type, parents) => {
+        const fullPath = parents.reduce((acc, p) => acc + p, '') + type;
+
+        styles += `
+          @keyframes hand_animation_${fullPath} {
+            from {
+              transform: rotate(180deg) ${parents.reduce((acc, p) =>
+                acc + 'rotate(0)' + getTranslation(p), '')
+              } rotate(0);
+            }
+            to {
+              transform: rotate(180deg) ${parents.reduce((acc, p) =>
+                acc + getRotation(p, '+') + getTranslation(p), '')
+              } ${getRotation(type)};
+            }
+          }
+
+          .hand_${fullPath} {
+            animation: hand_animation_${fullPath} 43200s linear infinite;
+            background-color: rgba(${rndColor()}, ${rndColor()}, ${rndColor()}, ${
+              minOpacity+(maxOpacity-minOpacity)*((maxDepth-parents.length)/maxDepth)
+            });
+          }
+        `;
+
+        domElements += `<div class="hand hand-${type} hand_${fullPath}"></div>`;
+      }
+
+      const createHandRec = (type, parents, depth) => {
+        createHand(type, parents);
+        if(depth > 0) {
+          createHandRec('m', [...parents, type], depth-1);
+          createHandRec('s', [...parents, type], depth-1);
+        }
+      }
+
+      createHandRec('h', [], maxDepth);
+      createHandRec('m', [], maxDepth-1);
+      createHandRec('s', [], maxDepth-1);
+
+      const css = document.createElement('style');
+      css.type = 'text/css';
+      const hours = new Date().getHours()%12;
+      const minutes = new Date().getMinutes();
+      const seconds = new Date().getSeconds()+(60*minutes)+(60*60*hours);
+      styles += `.hand { animation-delay: ${seconds*-1}s;}`;
+
+      if (css.styleSheet) css.styleSheet.cssText = styles;
+      else css.appendChild(document.createTextNode(styles));
+
+      document.getElementsByTagName("head")[0].appendChild(css);
+
+      document.querySelector('#clock-root').innerHTML = domElements;
+    }
+
+    window.onload2 = () => {
+      for (let i = 0; i < total; i++){
+        const opacity = minOpacity+(maxOpacity-minOpacity)*((total-i)/total);
+        const red = colorFloor + Math.floor(Math.random()*(255-colorFloor));
+        const green = colorFloor + Math.floor(Math.random()*(255-colorFloor));
+        const blue = colorFloor + Math.floor(Math.random()*(255-colorFloor));
+        const style = `style="background-color: rgba(${red}, ${green}, ${blue}, ${opacity})"`;
+        document.querySelectorAll('.hand:empty').forEach(n => {
+          n.innerHTML = `<div class="hand rotate-minute" ${style}></div><div class="hand rotate-second" ${style}></div>`;
+        });
+      }
+    };
+  </script>
+  <style>
+    .hand {
+      background-color: white;
+      border-radius: 100px;
+      display: block;
+      left: 50%;
+      position: fixed;
+      top: 50%;
+      transform-origin: 50% 0%;
+    }
+
+    .hand-h {
+      height: 10vmin;
+      width: 2px;
+    }
+
+    .hand-m, .hand-s {
+      height: 20vmin;
+      width: 1px;
+    }
+
+    body {
+      background-color: black;
+    }
+  </style>
+</head>
+<body>
+  <div id="clock-root"></div>
+</body>
