@@ -80,19 +80,6 @@
 
       document.querySelector('#clock-root').innerHTML = domElements;
     }
-
-    window.onload2 = () => {
-      for (let i = 0; i < total; i++){
-        const opacity = minOpacity+(maxOpacity-minOpacity)*((total-i)/total);
-        const red = colorFloor + Math.floor(Math.random()*(255-colorFloor));
-        const green = colorFloor + Math.floor(Math.random()*(255-colorFloor));
-        const blue = colorFloor + Math.floor(Math.random()*(255-colorFloor));
-        const style = `style="background-color: rgba(${red}, ${green}, ${blue}, ${opacity})"`;
-        document.querySelectorAll('.hand:empty').forEach(n => {
-          n.innerHTML = `<div class="hand rotate-minute" ${style}></div><div class="hand rotate-second" ${style}></div>`;
-        });
-      }
-    };
   </script>
   <style>
     .hand {
