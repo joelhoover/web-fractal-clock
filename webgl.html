@@ -57,7 +57,7 @@
   }
   </script>
   <script type="text/javascript">
-  const maxDepth = 7;
+  const maxDepth = new URLSearchParams(location.search).get('depth') || 7;
   const minOpacity = 0.1;
   const maxOpacity = 0.5;
   const colorFloor = 190;
@@ -133,7 +133,7 @@
       ...generateHandRec(depth - 1, [...parents, 'm'], minDimention),
       ...generateHandRec(depth - 1, [...parents, 's'], minDimention),
     ] : [];
-    console.log(generateHand(['h'], minDimention))
+
     return [
       generateHand(['h'], minDimention),
       ...generateHandRec(maxDepth, ['m'], minDimention),

@@ -1,6 +1,6 @@
 <head>
   <script type="text/javascript">
-    const total = 7;
+    const total = new URLSearchParams(location.search).get('depth') || 7;
     const minOpacity = 0.1;
     const maxOpacity = 0.5;
     const colorFloor = 190;
