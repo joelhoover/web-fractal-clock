@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<head>
+  <title>Fractal Clock (WebGL)</title>
+  <meta charset="utf-8"/>
+  <script type="x-shader/x-vertex" id="vertex-shader">
+    #version 100
+    precision highp float;
+
+    uniform float uTime;
+    uniform vec2 uScaling;
+
+    attribute vec2 position;
+    attribute vec4 color;
+    attribute vec2 parents;
+
+    varying vec4 vColor;
+
+    const float PI = 3.14159265358979323;
+    const float PI2 = PI * 2.0;
+
+    const int DEPTH = 16;
+
+    void main() {
+      vec2 pos = position;
+      float types = parents.x;
+      float depth = parents.y;
+      for(int i = 0; i < DEPTH; i++) {
+        float curType = mod(types, 2.0);
+        float frequency = mix(
+          PI2 / (60.0 * 60.0 * 12.0),
+          mix(PI2 / 60.0, PI2 / (60.0 * 60.0), curType) * step(0.5, depth),
+          step(-0.5, depth)
+        );
+        float offset = 0.4 * step(1.5, depth);
+
+        float s = sin(uTime * frequency);
+        float c = cos(uTime * frequency);
+        pos = mat2(c, -s, s, c) * pos + vec2(0.0, offset);
+
+        types = floor(types * 0.5);
+        depth = max(0.0, depth - 1.0);
+      }
+
+      gl_Position = vec4(pos * uScaling, 0.0, 1.0);
+      vColor = color;
+    }
+  </script>
+
+  <script type="x-shader/x-fragment" id="fragment-shader">
+  #version 100
+  precision mediump float;
+
+  varying vec4 vColor;
+
+  void main() {
+    gl_FragColor = vColor;
+  }
+  </script>
+  <script type="text/javascript">
+  const maxDepth = 7;
+  const minOpacity = 0.1;
+  const maxOpacity = 0.5;
+  const colorFloor = 190;
+
+  const getRenderingContext = () => {
+    const canvas = document.querySelector("canvas");
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * pixelRatio;
+    canvas.height = window.innerHeight * pixelRatio;
+    canvas.style.transform = `scale(${1/pixelRatio})`;
+    const options = { alpha: false };
+    const gl = canvas.getContext("webgl", options)
+      || canvas.getContext("experimental-webgl", options);
+    if (!gl) {
+      throw new Error('Unable to get WebGL context');
+    }
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    return gl;
+  }
+
+  const loadShader = (/** @type WebGLRenderingContext */ gl) => {
+    const vertSource = document.querySelector("#vertex-shader").innerHTML;
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertSource);
+    gl.compileShader(vertexShader);
+
+    const fragSource = document.querySelector("#fragment-shader").innerHTML;
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragSource);
+    gl.compileShader(fragmentShader);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.detachShader(program, vertexShader);
+    gl.detachShader(program, fragmentShader);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const errorMessage = gl.getProgramInfoLog(program);
+      cleanup();
+      throw new Error(`Error loading shader: ${errorMessage}`);
+    }
+
+    return program;
+  }
+
+  const generateAllHands = (maxDepth, minDimention) => {
+    const rndColor = () => colorFloor + Math.floor(Math.random()*(255-colorFloor));
+
+    const generateHand = (/** @type Array<'s'|'m'|'h'> */ parents, minDimention) => ({
+      width: (parents[parents.length-1] === 'h' ? 4 : 2) / minDimention,
+      height: parents[parents.length-1] === 'h' ? 0.2 : 0.4,
+      color: parents.length === 1 ? [255, 255, 255, 240] : [
+        rndColor(),
+        rndColor(),
+        rndColor(),
+        Math.floor(255 * (minOpacity + (maxOpacity-minOpacity)*((maxDepth-parents.length)/maxDepth))),
+      ],
+      parents: parents[parents.length-1] === 'h'
+        ? [0, -1]
+        : parents.reduceRight(
+            ([types, depth], hand) => ([types * 2 + (hand === 'm'), depth + 1]),
+            [0, 0],
+          )
+    });
+
+    const generateHandRec = (depth, parents, minDimention) => depth > 0 ? [
+      generateHand(parents, minDimention),
+      ...generateHandRec(depth - 1, [...parents, 'm'], minDimention),
+      ...generateHandRec(depth - 1, [...parents, 's'], minDimention),
+    ] : [];
+    console.log(generateHand(['h'], minDimention))
+    return [
+      generateHand(['h'], minDimention),
+      ...generateHandRec(maxDepth, ['m'], minDimention),
+      ...generateHandRec(maxDepth, ['s'], minDimention),
+    ];
+  };
+
+  const createBuffers = (/** @type WebGLRenderingContext */ gl, program, hands, minDimention) => {
+    const setQuad = (array, i, /** @type number[][] */ values) => {
+      const innerLength = values[0].length;
+      for(let j = 0; j < 6; j++) {
+        const jInput = Math.min([0, 1, 2, 2, 3, 0][j], values.length - 1);
+        values[jInput].forEach((val, k) => array[(i*6 + j)*innerLength + k] = val);
+      }
+    }
+
+    const generateBuffer = (name, size, /** @type 'float' | 'byte' */ type, normalized, handToAttributes) => {
+      const array = new (type === 'float' ? Float32Array : Uint8Array)(hands.length * 6 * size);
+      hands.forEach((hand, i) => setQuad(array, i, handToAttributes(hand)));
+
+      const attributeLoc = gl.getAttribLocation(program, name);
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, array, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(attributeLoc);
+      gl.vertexAttribPointer(attributeLoc, size, type === 'float' ? gl.FLOAT : gl.UNSIGNED_BYTE, normalized, 0, 0);
+      return buffer;
+    }
+
+    return {
+      posBuffer: generateBuffer(
+        'position',
+        2,
+        'float',
+        false,
+        ({width, height}) => [
+          [-width/2, 0],
+          [width/2, 0],
+          [width/2, height],
+          [-width/2, height]
+        ]
+      ),
+      colorBuffer: generateBuffer('color', 4, 'byte', true, ({color}) => [color]),
+      parentsBuffer: generateBuffer('parents', 2, 'float', false, ({parents}) => [parents]),
+    };
+  }
+
+  class FractalClock {
+    constructor() {
+      const minDimention = Math.min(window.innerWidth, window.innerHeight);
+      this.scalingValues = {
+        x: minDimention / window.innerWidth,
+        y: minDimention / window.innerHeight,
+      };
+
+      window.gl = this.gl = getRenderingContext();
+      this.program = loadShader(this.gl);
+      this.hands = generateAllHands(maxDepth, minDimention);
+      this.buffers = createBuffers(this.gl, this.program, this.hands, minDimention);
+      this.render();
+    }
+
+    destroy() {
+      this.gl.useProgram(null);
+      if (this.buffers) {
+        Object.keys(this.buffers).forEach((key) => {
+          this.gl.deleteBuffer(this.buffers[key]);
+        });
+        this.buffers = undefined;
+      }
+      if (this.program) {
+        this.gl.deleteProgram(this.program);
+        this.program = undefined;
+      }
+      if (this.requestAnimationFrameId) {
+        window.cancelAnimationFrame(this.requestAnimationFrameId);
+        this.requestAnimationFrameId = undefined;
+      }
+    }
+
+    render() {
+      // Setup GL
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+      // Setup Shader
+      this.gl.useProgram(this.program);
+
+      const hours = new Date().getHours()%12;
+      const minutes = new Date().getMinutes();
+      const seconds = new Date().getSeconds();
+      const milliseconds = new Date().getMilliseconds();
+      const timeLocation = this.gl.getUniformLocation(this.program, "uTime");
+      this.gl.uniform1f(timeLocation, milliseconds / 1000 + seconds + (60*minutes) + (60*60*hours));
+
+      const scalingLocation = this.gl.getUniformLocation(this.program, "uScaling");
+      this.gl.uniform2f(scalingLocation, this.scalingValues.x, this.scalingValues.y);
+
+      // Draw
+      this.gl.drawArrays(this.gl.TRIANGLES, 0, this.hands.length * 6);
+
+      // Cleanup
+      this.gl.useProgram(null);
+
+      // Schedule next frame
+      this.requestAnimationFrameId = window.requestAnimationFrame(() => this.render());
+    }
+  }
+
+  let app = null;
+  const recreateApp = (createNew = true) => {
+    if (app) {
+      app.destroy();
+    }
+    app = createNew ? new FractalClock() : null;
+  }
+  window.addEventListener("load", () => recreateApp());
+  window.addEventListener("resize", () => recreateApp());
+  window.addEventListener("beforeunload", () => recreateApp(false));
+  </script>
+  <style>
+    body {
+      background-color: black;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      transform-origin: 0 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas>Canvas not supported in this browser!</canvas>
+</body>
